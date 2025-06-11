@@ -25,8 +25,10 @@
 - **بهینه‌سازی‌های هوشمند:**
     - تشخیص خودکار فایل‌های PNG مات و تبدیل آن‌ها به JPEG برای حجم کمتر.
     - امکان فعال‌سازی فشرده‌سازی حداکثری (و کندتر) برای فایل‌های PNG.
-<img src="https://i.imgur.com/MGOLzY5.png" width="50"/>
----
+
+<p align="center">
+  <img src="https://i.imgur.com/MGOLzY5.png" alt="نمایی از محیط برنامه" width="300"/>
+</p>---
 
 ## نصب برنامه (Installation)
 
