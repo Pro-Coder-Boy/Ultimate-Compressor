@@ -8,6 +8,7 @@ from tkinter import ttk, messagebox, filedialog
 import ctypes
 import threading
 import logging
+import uuid
 
 # --- Conditional Logging Setup ---
 _HAS_ERROR_OCCURRED = False
@@ -67,7 +68,7 @@ def get_resource_path(relative_path):
     return os.path.join(base_path, relative_path)
 
 def get_tool_path(tool_name):
-    path = get_resource_path(tool_name)
+    path = get_resource_path(os.path.join('tools', tool_name))
     if not os.path.exists(path):
         log_error(f"Tool not found at expected path: {path}")
         messagebox.showwarning(STRINGS["error_title"], f"{tool_name} not found. This feature will be disabled.")
@@ -126,8 +127,8 @@ class ImageProcessor:
                 if os.path.exists(temp_out_name): os.remove(temp_out_name)
         return best_quality if best_quality != -1 else 1
     def compress_png(self, in_path, out_path, quality_range="60-80", use_zopfli=True):
-        pngquant_path = get_tool_path('pngquant.exe')
-        if not pngquant_path: return False, "PNG tool (pngquant) not found."
+        pngquant_path, zopflipng_path = get_tool_path('pngquant.exe'), get_tool_path('zopflipng.exe')
+        if not pngquant_path or not zopflipng_path: return False, "PNG tools (pngquant/zopflipng) not found."
         temp_path = out_path if not use_zopfli else os.path.join(tempfile.gettempdir(), f"quant_{os.path.basename(out_path)}")
         try:
             p_command = [pngquant_path, '--force', '--strip', '--quality', quality_range, '--speed=1', '--output', temp_path, in_path]
@@ -149,22 +150,24 @@ class ImageProcessor:
             else: return True, "Success"
         finally:
             if use_zopfli and os.path.exists(temp_path): os.remove(temp_path)
-    
+    def _safe_copy_for_processing(self, file_path):
+        try:
+            file_path.encode('ascii'); return file_path, None
+        except UnicodeEncodeError:
+            _, ext = os.path.splitext(file_path)
+            safe_name = f"temp_{uuid.uuid4().hex}{ext}"; safe_path = os.path.join(tempfile.gettempdir(), safe_name)
+            shutil.copy2(file_path, safe_path)
+            logging.info(f"Copied non-ASCII filename to safe temp path '{safe_path}'")
+            return safe_path, safe_path
     def _convert_image(self, source_path, target_format):
-        """ A robust function to convert an image to a target format, returning a temp path. """
-        logging.info(f"Converting '{os.path.basename(source_path)}' to {target_format.upper()} format.")
-        temp_converted_path = os.path.join(tempfile.gettempdir(), f"converted_{os.path.splitext(os.path.basename(source_path))[0]}.{target_format}")
+        temp_converted_path = os.path.join(tempfile.gettempdir(), f"converted_{uuid.uuid4().hex}.{target_format}")
         with Image.open(source_path) as img:
             save_options = {}
             if target_format in ['jpeg', 'jpg']:
-                if img.mode == 'RGBA':
-                    logging.info("Source has alpha, converting to RGB for JPEG.")
-                    img = img.convert('RGB')
-                save_options['quality'] = 98 # High quality intermediate for cjpeg
+                if img.mode == 'RGBA': img = img.convert('RGB')
+                save_options['quality'] = 98
             elif target_format == 'png':
-                if img.mode != 'RGBA':
-                    logging.info("Source is not RGBA, converting for PNG consistency.")
-                    img = img.convert('RGBA')
+                if img.mode != 'RGBA': img = img.convert('RGBA')
             img.save(temp_converted_path, **save_options)
         return temp_converted_path
 
@@ -174,37 +177,26 @@ class ImageProcessor:
         target_format_str = options.get("format", STRINGS["keep_original_format"])
         is_converting_format = target_format_str != STRINGS["keep_original_format"]
         target_format = target_format_str.lower() if is_converting_format else file_ext_orig.lower().replace('.', '')
-        
-        # --- Auto-convert logic ---
         if options.get("auto_convert_png") and file_ext_orig.lower() == '.png' and not is_converting_format:
-            if self.is_png_fully_opaque(file_path):
-                logging.info(f"Opaque PNG detected. Auto-converting '{original_basename}' to JPEG.")
-                target_format = "jpeg"
-                is_converting_format = True
-
+            if self.is_png_fully_opaque(file_path): target_format, is_converting_format = "jpeg", True
         if should_overwrite and is_converting_format:
             msg = STRINGS["overwrite_format_error"]; log_error(msg); return False, msg
-        
         final_output_path = file_path if should_overwrite else os.path.join(
             options.get('output_dir', os.path.dirname(file_path)) if options.get('output_dir') != STRINGS["original_folder"] else os.path.dirname(file_path),
             f"{file_name}{options.get('suffix', '-tiny')}.{target_format}")
-        
         with tempfile.NamedTemporaryFile(suffix=f".{target_format}", delete=False) as temp_out: temp_output_path = temp_out.name
         current_path, temp_files = file_path, [temp_output_path]
         try:
-            # Step 1: Resize
+            current_path, safe_copy = self._safe_copy_for_processing(current_path)
+            if safe_copy: temp_files.append(safe_copy)
             if options.get("resize_enabled") and options.get("width", 0) > 0 and options.get("height", 0) > 0:
-                temp_resized = os.path.join(tempfile.gettempdir(), f"resized_{original_basename}");
+                temp_resized = os.path.join(tempfile.gettempdir(), f"resized_{uuid.uuid4().hex}");
                 with Image.open(current_path) as img: img.resize((options["width"], options["height"]), Image.Resampling.LANCZOS).save(temp_resized)
                 current_path, temp_files = temp_resized, temp_files + [temp_resized]
                 self._update_status(STRINGS["status_resized"].format(w=options["width"], h=options["height"]))
-            
-            # Step 2: Format Conversion (if needed)
-            if os.path.splitext(current_path)[1].lower().replace('.', '') != target_format:
+            if os.path.splitext(current_path)[1].lower().replace('.', '') != f".{target_format}":
                 temp_converted = self._convert_image(current_path, target_format)
                 current_path, temp_files = temp_converted, temp_files + [temp_converted]
-            
-            # Step 3: Compression
             quality, is_success, message = options.get("quality", 75), False, "An unknown compression error occurred."
             if target_format in ['jpeg', 'jpg']:
                 if options.get("mode") == "size": quality = self.find_best_quality(current_path, options["target_size"], self.compress_jpeg)
@@ -223,8 +215,6 @@ class ImageProcessor:
                 with Image.open(current_path) as img: img.save(temp_output_path, format='ICO', sizes=[(32,32), (48,48), (64,64)])
                 is_success, message = True, f"'{original_basename}' -> ICO."
             else: return False, STRINGS["unsupported_type"]
-            
-            # Step 4: Finalize
             if is_success:
                 if message != f"'{original_basename}' is already optimized.": shutil.move(temp_output_path, final_output_path)
                 temp_files.remove(temp_output_path); return True, message
@@ -320,21 +310,15 @@ class UltimateCompressorGUI(tk.Tk):
     def _update_options_state(self):
         is_quality_mode = self.comp_mode.get() == "quality"
         try:
-            target_format = self.format_var.get().lower()
-            if target_format == STRINGS["keep_original_format"].lower():
-                sel_idx = self.file_listbox.curselection()[0]
-                f_path = self.files[sel_idx]
-                target_format = os.path.splitext(f_path)[1].lower().replace('.', '')
-            
+            sel_idx = self.file_listbox.curselection()[0]; f_path = self.files[sel_idx]
+            target_format_str = self.format_var.get(); target_format = target_format_str.lower() if target_format_str != STRINGS["keep_original_format"] else os.path.splitext(f_path)[1].lower().replace('.', '')
             is_png_output = (target_format == 'png')
             self.max_png_check.config(state='normal' if is_png_output and is_quality_mode else 'disabled')
-
-            is_png_input = os.path.splitext(self.files[self.file_listbox.curselection()[0]])[1].lower() == '.png'
+            is_png_input = os.path.splitext(f_path)[1].lower() == '.png'
             self.auto_convert_png_check.config(state='normal' if is_png_input else 'disabled')
             if not is_png_input: self.auto_convert_png_var.set(False)
         except IndexError:
-            self.max_png_check.config(state='disabled')
-            self.auto_convert_png_check.config(state='disabled')
+            self.max_png_check.config(state='disabled'); self.auto_convert_png_check.config(state='disabled')
     def toggle_comp_widgets(self):
         is_quality_mode = self.comp_mode.get() == "quality";
         self.quality_entry.config(state='normal' if is_quality_mode else 'disabled');
@@ -369,21 +353,19 @@ class UltimateCompressorGUI(tk.Tk):
             if not 1 <= quality <= 100: raise ValueError("Quality out of range")
             options = {"resize_enabled": self.resize_enabled.get(), "width": self.width_var.get(), "height": self.height_var.get()}
             target_format_str = self.format_var.get(); target_format = target_format_str.lower() if target_format_str != STRINGS["keep_original_format"] else os.path.splitext(f_path)[1].lower().replace('.', '')
-            
             original_ext = os.path.splitext(f_path)[1].lower()
             if self.auto_convert_png_var.get() and original_ext == '.png':
                 if self.processor.is_png_fully_opaque(f_path): target_format = "jpeg"
-
             current_path, temp_files = f_path, []
+            safe_path, safe_copy = self.processor._safe_copy_for_processing(current_path)
+            if safe_copy: current_path, temp_files = safe_path, temp_files + [safe_copy]
             if options["resize_enabled"] and options["width"] > 0 and options["height"] > 0:
-                temp_resized = os.path.join(tempfile.gettempdir(), f"temp_estimate_{os.path.basename(f_path)}")
+                temp_resized = os.path.join(tempfile.gettempdir(), f"temp_estimate_{uuid.uuid4().hex}{original_ext}")
                 with Image.open(current_path) as img: img.resize((options["width"], options["height"]), Image.Resampling.LANCZOS).save(temp_resized)
-                current_path, temp_files = temp_resized, [temp_resized]
-            
+                current_path, temp_files = temp_resized, temp_files + [temp_resized]
             if os.path.splitext(current_path)[1].lower().replace('.', '') != f".{target_format}":
                 temp_converted = self.processor._convert_image(current_path, target_format)
                 current_path = temp_converted; temp_files.append(temp_converted)
-            
             with tempfile.NamedTemporaryFile(suffix=".tmp", delete=False) as temp_out: temp_out_name = temp_out.name
             temp_files.append(temp_out_name)
             is_success, msg = False, ""
@@ -391,6 +373,8 @@ class UltimateCompressorGUI(tk.Tk):
             elif target_format == 'png':
                 q_range = f"{quality-10}-{quality}" if quality > 10 else f"0-{quality}"; use_zopfli = self.max_png_var.get(); is_success, msg = self.processor.compress_png(current_path, temp_out_name, q_range, use_zopfli)
             elif target_format == 'webp': is_success, msg = self.processor.compress_webp(current_path, temp_out_name, quality)
+            elif target_format == 'ico':
+                with Image.open(current_path) as img: img.save(temp_out_name, format='ICO', sizes=[(32,32), (48,48), (64,64)]); is_success = True
             
             if is_success:
                 if msg == "Already Optimized": self.after(0, self.update_estimated_size_label, os.path.getsize(current_path) / 1024)
@@ -427,39 +411,24 @@ class UltimateCompressorGUI(tk.Tk):
 
 # --- Main Dispatcher ---
 def main():
-    # Check if SHIFT key is pressed (VK_SHIFT = 0x10)
     is_shift_pressed = ctypes.windll.user32.GetAsyncKeyState(0x10) & 0x8000 != 0
-    
-    # Check for our custom argument from "Open With"
-    is_open_with = "--shift" in sys.argv
-    
-    # Remove the custom argument so it doesn't confuse the file list
-    files_to_process = [arg for arg in sys.argv[1:] if arg != "--shift"]
-
-    # Condition to launch the GUI:
-    # 1. If SHIFT key is held down.
-    # 2. If launched via "Open With".
-    # 3. If the application is started without any files (e.g., double-clicked).
-    if is_shift_pressed or is_open_with or not files_to_process:
-        if not files_to_process and not is_open_with:
+    files_to_process = sys.argv[1:]
+    if is_shift_pressed or not files_to_process:
+        if not files_to_process:
              root = tk.Tk(); root.withdraw()
              files_to_process = filedialog.askopenfilenames(title="Select Images to Compress", filetypes=[("Image Files", "*.jpg *.jpeg *.png *.webp")])
              if not files_to_process: return
-        
         app = UltimateCompressorGUI(files_to_process)
         app.mainloop()
     else:
-        # Headless mode for simple drag-and-drop
         processor = ImageProcessor()
         options = {"mode": "quality", "quality": 75, "resize_enabled": False, "output_dir": STRINGS["original_folder"], 
                    "suffix": "-tiny", "format": STRINGS["keep_original_format"], "overwrite": False, "max_png": False, "auto_convert_png": True} 
-        
         success_count, error_msgs = 0, []
         for file_path in files_to_process:
             is_success, msg = processor.process_file(file_path, options)
             if is_success: success_count += 1
             else: error_msgs.append(f"- {os.path.basename(file_path)}:\n  {msg}")
-        
         if not error_msgs and success_count > 0:
             messagebox.showinfo(STRINGS["success_title"], STRINGS["headless_success"].format(count=success_count))
         elif error_msgs:
