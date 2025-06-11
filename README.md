@@ -32,8 +32,8 @@
 
 ## نصب برنامه (Installation)
 
-1.  به بخش **[Releases](https://github.com/YOUR_USERNAME/YOUR_REPOSITORY/releases)** در همین صفحه بروید. (لطفاً `YOUR_USERNAME` و `YOUR_REPOSITORY` را با نام کاربری و نام ریپازیتوری خود جایگزین کنید).
-2.  آخرین نسخه برنامه (فایل `Setup-ImageCompressor-v1.0.exe`) را دانلود کنید.
+1.  به بخش **[Releases](https://github.com/Pro-Coder-Boy/Ultimate-Compressor/releases/latest)** در همین صفحه بروید.
+2.  آخرین نسخه برنامه (ترچیها فایل نصبی) را دانلود کنید.
 3.  فایل نصب را اجرا کرده و مراحل را دنبال کنید.
 
 پس از نصب، میانبرهای لازم به صورت خودکار ساخته خواهند شد.
