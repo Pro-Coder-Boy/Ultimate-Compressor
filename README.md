@@ -2,8 +2,12 @@
 
 یک ابزار قدرتمند و رایگان برای ویندوز جهت کاهش حجم، تغییر سایز و تبدیل فرمت عکس‌ها با بالاترین کیفیت ممکن. این برنامه با الهام از سرویس‌های آنلاین مانند TinyPNG ساخته شده و تمام قابلیت‌های آن‌ها را به صورت آفلاین در اختیار شما قرار می‌دهد.
 
-![نمایی از محیط برنامه](https://i.imgur.com/MGOLzY5.png)
-![نمایی از محیط برنامه](https://i.imgur.com/HY6IhSG.png)
+<p align="center">
+  <img src=["https://i.imgur.com/GjYn2u9.png" alt="نمایی از محیط برنامه](https://i.imgur.com/HY6IhSG.png)" width="600"/>
+</p>
+<p align="center">
+  <img src=["https://i.imgur.com/MGOLzY5.png" alt="نمایی از محیط برنامه](https://i.imgur.com/HY6IhSG.png)" width="600"/>
+</p>
 
 ---
 
@@ -33,8 +37,8 @@
 
 ## نصب برنامه (Installation)
 
-1.  به بخش **[Releases](https://github.com/YOUR_USERNAME/YOUR_REPOSITORY/releases)** در همین صفحه بروید.
-2.  آخرین نسخه برنامه (فایل `Setup-ImageCompressor-v1.1.exe`) را دانلود کنید.
+1.  به بخش **[Releases](https://github.com/YOUR_USERNAME/YOUR_REPOSITORY/releases)** در همین صفحه بروید. (لطفاً `YOUR_USERNAME` و `YOUR_REPOSITORY` را با نام کاربری و نام ریپازیتوری خود جایگزین کنید).
+2.  آخرین نسخه برنامه (فایل `Setup-ImageCompressor-v1.0.exe`) را دانلود کنید.
 3.  فایل نصب را اجرا کرده و مراحل را دنبال کنید.
 
 پس از نصب، میانبرهای لازم به صورت خودکار ساخته خواهند شد.
