@@ -63,8 +63,14 @@ STRINGS = {
 
 # --- Helper & Core Logic ---
 def get_resource_path(relative_path):
-    try: base_path = sys._MEIPASS
-    except Exception: base_path = os.path.abspath(".")
+    """ Get absolute path to resource, works for dev and for PyInstaller """
+    # FIX: Make path resolution robust, independent of working directory
+    try:
+        # PyInstaller creates a temp folder and stores path in _MEIPASS
+        base_path = sys._MEIPASS
+    except Exception:
+        # Fallback for running as a script: use the script's own directory
+        base_path = os.path.dirname(os.path.abspath(sys.argv[0]))
     return os.path.join(base_path, relative_path)
 
 def get_tool_path(tool_name):
@@ -190,13 +196,17 @@ class ImageProcessor:
             current_path, safe_copy = self._safe_copy_for_processing(current_path)
             if safe_copy: temp_files.append(safe_copy)
             if options.get("resize_enabled") and options.get("width", 0) > 0 and options.get("height", 0) > 0:
-                temp_resized = os.path.join(tempfile.gettempdir(), f"resized_{uuid.uuid4().hex}");
+                _, file_ext = os.path.splitext(current_path)
+                temp_resized = os.path.join(tempfile.gettempdir(), f"resized_{uuid.uuid4().hex}{file_ext}")
                 with Image.open(current_path) as img: img.resize((options["width"], options["height"]), Image.Resampling.LANCZOS).save(temp_resized)
                 current_path, temp_files = temp_resized, temp_files + [temp_resized]
                 self._update_status(STRINGS["status_resized"].format(w=options["width"], h=options["height"]))
-            if os.path.splitext(current_path)[1].lower().replace('.', '') != f".{target_format}":
+            
+            current_ext_no_dot = os.path.splitext(current_path)[1].lower().strip('.')
+            if current_ext_no_dot != target_format:
                 temp_converted = self._convert_image(current_path, target_format)
                 current_path, temp_files = temp_converted, temp_files + [temp_converted]
+                
             quality, is_success, message = options.get("quality", 75), False, "An unknown compression error occurred."
             if target_format in ['jpeg', 'jpg']:
                 if options.get("mode") == "size": quality = self.find_best_quality(current_path, options["target_size"], self.compress_jpeg)
@@ -363,9 +373,12 @@ class UltimateCompressorGUI(tk.Tk):
                 temp_resized = os.path.join(tempfile.gettempdir(), f"temp_estimate_{uuid.uuid4().hex}{original_ext}")
                 with Image.open(current_path) as img: img.resize((options["width"], options["height"]), Image.Resampling.LANCZOS).save(temp_resized)
                 current_path, temp_files = temp_resized, temp_files + [temp_resized]
-            if os.path.splitext(current_path)[1].lower().replace('.', '') != f".{target_format}":
+            
+            current_ext_no_dot = os.path.splitext(current_path)[1].lower().strip('.')
+            if current_ext_no_dot != target_format:
                 temp_converted = self.processor._convert_image(current_path, target_format)
                 current_path = temp_converted; temp_files.append(temp_converted)
+
             with tempfile.NamedTemporaryFile(suffix=".tmp", delete=False) as temp_out: temp_out_name = temp_out.name
             temp_files.append(temp_out_name)
             is_success, msg = False, ""
@@ -412,12 +425,28 @@ class UltimateCompressorGUI(tk.Tk):
 # --- Main Dispatcher ---
 def main():
     is_shift_pressed = ctypes.windll.user32.GetAsyncKeyState(0x10) & 0x8000 != 0
-    files_to_process = sys.argv[1:]
+    
+    # FIX: Filter command-line arguments to only include actual files
+    potential_files = sys.argv[1:]
+    files_to_process = []
+    for f in potential_files:
+        # This filters out arguments like "--shift" and ensures the path is a file
+        if os.path.isfile(f):
+            files_to_process.append(f)
+
     if is_shift_pressed or not files_to_process:
         if not files_to_process:
-             root = tk.Tk(); root.withdraw()
-             files_to_process = filedialog.askopenfilenames(title="Select Images to Compress", filetypes=[("Image Files", "*.jpg *.jpeg *.png *.webp")])
-             if not files_to_process: return
+            temp_root = tk.Tk()
+            temp_root.withdraw()
+            files_to_process = filedialog.askopenfilenames(
+                parent=temp_root,
+                title="Select Images to Compress",
+                filetypes=[("Image Files", "*.jpg *.jpeg *.png *.webp")]
+            )
+            temp_root.destroy()
+            if not files_to_process:
+                return
+
         app = UltimateCompressorGUI(files_to_process)
         app.mainloop()
     else:
@@ -429,6 +458,7 @@ def main():
             is_success, msg = processor.process_file(file_path, options)
             if is_success: success_count += 1
             else: error_msgs.append(f"- {os.path.basename(file_path)}:\n  {msg}")
+        
         if not error_msgs and success_count > 0:
             messagebox.showinfo(STRINGS["success_title"], STRINGS["headless_success"].format(count=success_count))
         elif error_msgs:
