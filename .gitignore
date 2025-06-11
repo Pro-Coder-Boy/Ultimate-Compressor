@@ -1,0 +1,14 @@
+# PyInstaller
+/dist/
+/build/
+*.spec
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Log file
+compressor_log.txt
+
+# Installer Output
+/InstallerOutput/
