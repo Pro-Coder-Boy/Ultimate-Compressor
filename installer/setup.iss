@@ -8,7 +8,7 @@
 [Setup]
 AppId={{C1A8A331-B6E7-4E8F-8E5A-A7E08249F278}}
 AppName=Ultimate Image Compressor
-AppVersion=1.2.0
+AppVersion=1.4.0
 AppPublisher=Pro-Coder-Boy
 PrivilegesRequired=admin
 DefaultDirName={autopf}\UltimateImageCompressor
@@ -20,7 +20,7 @@ SolidCompression=yes
 WizardStyle=modern
 ; Use the defined AppRoot to create absolute paths
 OutputDir={#AppRoot}\InstallerOutput
-OutputBaseFilename=Setup-ImageCompressor-v1.2.0
+OutputBaseFilename=Setup-ImageCompressor-v1.4.0
 SetupIconFile={#AppRoot}\icon.ico
 
 [Languages]
